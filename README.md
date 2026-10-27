@@ -22,6 +22,13 @@
 - 支持横屏 / 竖屏 / 方形 / 4:3 四种画幅
 - 配置可存档为 `.json`，也可以导入别人的配置接着改
 
+## 在线版
+
+- 生成器：<https://arkadegong.github.io/credits-roll/>
+- 成品示例：<https://arkadegong.github.io/credits-roll/examples/demo.html>
+
+（由 GitHub Pages 自动部署 `main` 分支）
+
 ## 快速开始
 
 1. 双击打开 `index.html`（推荐 Chrome / Edge）
