@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>谢幕表</title>
+<style>
+html,body{margin:0;height:100%;background:#000000;overflow:hidden}
+body{display:flex;align-items:center;justify-content:center}
+canvas{display:block;max-width:100vw;max-height:100vh}
+@media (max-aspect-ratio:16/9){canvas{width:100vw;height:auto}}
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<script>
+
+/* 滚幕 · 播放器（由生成器内嵌生成） */
+(function () {
+  "use strict";
+  var D = {"selector":"#stage","w":1920,"h":1080,"items":[{"kind":"header","text":"出演","v":0},{"kind":"row","l":"奥雷里亚诺·巴比伦","r":"张 三","v":148},{"kind":"row","l":"阿玛兰塔·布恩迪亚","r":"李 四","v":250},{"kind":"row","l":"乌尔苏拉·伊瓜兰","r":"赵 六","v":352},{"kind":"row","l":"皮埃特罗·克雷斯皮","r":"孙 七","v":454},{"kind":"header","text":"群像","v":620},{"kind":"row","l":"镇民甲 · 镇民乙","r":"李 四","v":768},{"kind":"row","l":"工人 · 医生 · 守夜人","r":"郑 十","v":870},{"kind":"header","text":"配音","v":1036},{"kind":"row","l":"旁白","r":"李 四","v":1184},{"kind":"header","text":"特别感谢","v":1350},{"kind":"center","text":"加西亚·马尔克斯","v":1498},{"kind":"center","text":"谢 幕","v":1600}],"fontPx":46,"fontStack":"'KaiTi','STKaiti','楷体',serif","headerTrack":14,"colRoleR":915,"colWhoL":1005,"speed":72.895,"lead":90,"renderScale":"auto","duration":38,"tailSec":1.5,"loop":true,"palette":{"bg":"#000000","fg":"#FFFFFF"},"alpha":{"header":0.55,"row":1},"parallax":{"on":false,"text":"谢 幕","px":260,"alpha":0.06,"mul":0.4,"gap":900,"color":"#FFFFFF"},"autoplay":true};
+  var cv = document.querySelector(D.selector || "canvas");
+  var ctx = cv.getContext("2d");
+  var W = D.w, H = D.h, CX = W / 2;   /* 逻辑尺寸；物理尺寸 = 逻辑 × 渲染倍率 */
+  var cur = 0, last = null, playing = false;
+  var K = 1;
+
+  /* 渲染倍率：1 = 标准；2 = 2 倍超采样；"auto" = 跟随屏幕 DPR（高分屏文字不发虚） */
+  function resize() {
+    var r = D.renderScale;
+    K = (r === "auto") ? Math.min(2, window.devicePixelRatio || 1) : (+r || 1);
+    cv.width = Math.round(D.w * K);
+    cv.height = Math.round(D.h * K);
+  }
+  resize();
+
+  function setFont(px) { ctx.font = (px || D.fontPx) + "px " + D.fontStack; }
+
+  /* 栏目标题：居中 + 字距（逐字定位，保证跨浏览器一致） */
+  function drawHeader(s, y) {
+    setFont();
+    var w = 0, i, x;
+    for (i = 0; i < s.length; i++) w += ctx.measureText(s.charAt(i)).width + D.headerTrack;
+    w -= D.headerTrack;
+    x = CX - w / 2;
+    ctx.globalAlpha = D.alpha.header;
+    for (i = 0; i < s.length; i++) {
+      ctx.fillText(s.charAt(i), x, y);
+      x += ctx.measureText(s.charAt(i)).width + D.headerTrack;
+    }
+  }
+
+  /* 视差背景层：大字纵向平铺，按 主速度 × 倍率 移动，速度差形成前后景深 */
+  function drawParallax(t) {
+    var p = D.parallax;
+    if (!p || !p.on || !p.text) return;
+    var period = Math.max(D.h, p.gap);
+    var off = ((t * D.speed * p.mul) % period + period) % period;
+    setFont(p.px);
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.alpha;
+    ctx.textAlign = "center";
+    var y, k, n = Math.ceil((H + period) / period) + 1;
+    for (k = 0; k < n; k++) {
+      y = k * period - off + p.px * 0.35;
+      if (y > -p.px && y < H + p.px) ctx.fillText(p.text, CX, y);
+    }
+    ctx.textAlign = "left";
+  }
+
+  /* t 秒时的画面：同一 t 永远同一张图（纯函数） */
+  function render(t) {
+    ctx.setTransform(K, 0, 0, K, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = D.palette.bg;
+    ctx.fillRect(0, 0, W, H);
+
+    drawParallax(t);
+
+    setFont();
+    ctx.fillStyle = D.palette.fg;
+    var sc = t * D.speed, pad = D.fontPx, items = D.items, i, it, y;
+
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();   /* 边缘硬切＝电影字幕的做法 */
+    for (i = 0; i < items.length; i++) {
+      it = items[i];
+      y = H + D.lead + it.v - sc;
+      if (y < 0 || y > H + pad) continue;
+      if (it.kind === "header") { drawHeader(it.text, y); }
+      else if (it.kind === "center") {
+        ctx.globalAlpha = D.alpha.row;
+        ctx.textAlign = "center";
+        ctx.fillText(it.text, CX, y);
+        ctx.textAlign = "left";
+      } else {
+        ctx.globalAlpha = D.alpha.row;
+        ctx.textAlign = "right";  ctx.fillText(it.l, D.colRoleR, y);
+        ctx.textAlign = "left";   ctx.fillText(it.r, D.colWhoL, y);
+      }
+    }
+    ctx.restore();
+    ctx.textAlign = "left";
+    ctx.globalAlpha = 1;
+  }
+
+  function totalSec() { return D.duration + D.tailSec; }
+
+  function loop(ts) {
+    if (playing) {
+      if (last !== null) cur += (ts - last) / 1000;
+      var T = totalSec();
+      if (cur >= T) {
+        if (D.loop) { cur -= T; } else { cur = T; playing = false; if (api.onend) api.onend(); }
+      }
+      render(Math.min(cur, T));
+      if (api.onframe) api.onframe(cur);
+    }
+    last = ts;
+    requestAnimationFrame(loop);
+  }
+
+  var api = {
+    data: D,
+    render: function (t) { cur = t; render(t); if (api.onframe) api.onframe(cur); },
+    time: function () { return cur; },
+    total: totalSec,
+    play: function () { playing = true; },
+    pause: function () { playing = false; },
+    isPlaying: function () { return playing; },
+    /* 更新配置：画幅变化时同步重设画布物理尺寸 */
+    setData: function (d) {
+      var k;
+      for (k in d) if (Object.prototype.hasOwnProperty.call(d, k)) D[k] = d[k];
+      if (cv.width !== Math.round(D.w * K) || cv.height !== Math.round(D.h * K) ||
+          D.renderScale !== resize._rs) {
+        resize._rs = D.renderScale;
+        W = D.w; H = D.h; CX = W / 2;
+        resize();
+      }
+      if (cur > totalSec()) cur = 0;
+    },
+    onframe: null,
+    onend: null
+  };
+  /* 成品页交互：双击＝全屏，空格＝暂停/继续（预览页里同样可用） */
+  function toggleFs() {
+    if (document.fullscreenElement) { document.exitFullscreen(); }
+    else if (cv.requestFullscreen) { cv.requestFullscreen(); }
+  }
+  cv.addEventListener("dblclick", toggleFs);
+  document.addEventListener("keydown", function (e) {
+    if (e.code === "Space" && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) {
+      e.preventDefault();
+      playing = !playing;
+    }
+  });
+
+  window.CreditsRoll = api;
+
+  if (D.autoplay !== false) playing = true;
+  requestAnimationFrame(loop);
+})();
+
+</script>
+</body>
+</html>

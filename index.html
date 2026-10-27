@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>滚幕 · 滚动谢幕表生成器</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   滚幕 · Credits Roll Generator
+   电影片尾字幕 / 滚动谢幕表生成器。
+   左侧调参（简单 / 高级两种模式），右侧实时预览，
+   一键导出「双击即播」的单文件 HTML（字体与内容全部内嵌，零外部请求）。
+   本文件零依赖、零构建：直接双击打开即可使用。
+   ═══════════════════════════════════════════════════════════════════════ */
+:root{
+  --bg:#0d0f12; --panel:#14171c; --panel2:#1b2028; --line:#272d37;
+  --tx:#e8ebf0; --tx2:#98a3b1; --acc:#4fa8ff; --ok:#3ecf8e;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--tx);
+  font:14px/1.6 "Microsoft YaHei",system-ui,sans-serif}
+#app{display:flex;height:100%}
+
+/* ── 左：控制面板 ─────────────────────────────────────────── */
+#panel{width:388px;min-width:344px;background:var(--panel);border-right:1px solid var(--line);
+  display:flex;flex-direction:column}
+#panel header{padding:13px 16px 11px;border-bottom:1px solid var(--line)}
+#panel h1{margin:0;font-size:17px;letter-spacing:1px;display:flex;align-items:center;gap:8px}
+#panel h1 small{color:var(--tx2);font-weight:400;font-size:11px;letter-spacing:0}
+#seg{margin-left:auto;display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+#seg button{border:0;border-radius:0;background:transparent;color:var(--tx2);padding:4px 12px;font-size:12.5px}
+#seg button.on{background:var(--acc);color:#06121f;font-weight:600}
+#ctrls{flex:1;overflow-y:auto;padding:8px 16px 28px}
+#ctrls::-webkit-scrollbar{width:8px}
+#ctrls::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+
+.grp{margin-top:13px}
+.grp>h2{margin:0 0 8px;font-size:12px;color:var(--acc);font-weight:600;letter-spacing:2px;
+  border-bottom:1px dashed var(--line);padding-bottom:5px}
+.row{display:flex;align-items:center;gap:8px;margin:7px 0}
+.row label{flex:0 0 92px;color:var(--tx2);font-size:12.5px}
+.row input[type=range]{flex:1;accent-color:var(--acc)}
+.row input[type=number],.row input[type=text],.row select{
+  flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);color:var(--tx);
+  border-radius:5px;padding:5px 8px;font:inherit;font-size:12.5px}
+.row input[type=color]{width:46px;height:28px;padding:0;border:1px solid var(--line);
+  background:var(--panel2);border-radius:5px;cursor:pointer;flex:0 0 46px}
+.row input[type=checkbox]{accent-color:var(--acc);width:16px;height:16px}
+.row .val{flex:0 0 60px;text-align:right;color:var(--tx2);font-size:12px;font-variant-numeric:tabular-nums}
+.hint{color:var(--tx2);font-size:11.5px;margin:4px 0 0;line-height:1.6}
+.hint b{color:var(--tx)}
+textarea{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--tx);
+  border-radius:6px;padding:8px;font:12.5px/1.75 Consolas,"Microsoft YaHei",monospace;resize:vertical}
+#script{height:250px}
+.btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+button{background:var(--panel2);border:1px solid var(--line);color:var(--tx);border-radius:5px;
+  padding:6px 11px;font:inherit;font-size:12.5px;cursor:pointer}
+button:hover{border-color:var(--acc);color:var(--acc)}
+button.pri{background:var(--acc);border-color:var(--acc);color:#06121f;font-weight:600}
+button.pri:hover{filter:brightness(1.12);color:#06121f}
+.file{position:relative;overflow:hidden;display:inline-block}
+.file input{position:absolute;inset:0;opacity:0;cursor:pointer}
+#fontInfo{color:var(--tx2);font-size:11.5px;align-self:center}
+.adv{display:none}
+body.mode-adv .adv{display:flex}
+body.mode-adv .adv.group{display:block}
+
+/* ── 右：预览 ─────────────────────────────────────────────── */
+#stage{flex:1;display:flex;align-items:center;justify-content:center;background:#000;
+  position:relative;min-width:0}
+#preview{max-width:100%;max-height:100%;background:#000}
+#bar{position:absolute;left:0;right:0;bottom:0;display:flex;gap:8px;align-items:center;
+  padding:9px 14px;background:linear-gradient(transparent,rgba(0,0,0,.78))}
+#bar .t{color:#8b97a5;font-size:12px;font-variant-numeric:tabular-nums;margin-left:auto}
+#bar button{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.16)}
+#bar button:hover{background:rgba(255,255,255,.16);color:#fff}
+#toast{position:absolute;top:16px;left:50%;transform:translateX(-50%);
+  background:rgba(20,24,30,.95);border:1px solid var(--line);border-radius:6px;
+  padding:7px 14px;font-size:12.5px;opacity:0;transition:opacity .25s;pointer-events:none;z-index:5}
+#toast.on{opacity:1}
+</style>
+</head>
+<body class="mode-simple">
+<div id="app">
+
+  <!-- ═══════════ 左：控制面板 ═══════════ -->
+  <div id="panel">
+    <header>
+      <h1>滚 幕<small>Credits Roll Generator</small>
+        <span id="seg">
+          <button id="mSimple" class="on">简单</button>
+          <button id="mAdv">高级</button>
+        </span>
+      </h1>
+    </header>
+
+    <div id="ctrls">
+
+      <div class="grp">
+        <h2>名单</h2>
+        <textarea id="script" spellcheck="false"></textarea>
+        <p class="hint">
+          <b>#</b> 开头＝栏目名（居中）　<b>|</b> 分隔＝两栏行（左栏｜右栏）　
+          其它非空行＝整行居中　空行忽略
+        </p>
+        <div class="btns">
+          <button id="btnDemo">填入示例</button>
+          <button id="btnClear">清空</button>
+        </div>
+        <p class="hint" id="stat">—</p>
+      </div>
+
+      <div class="grp">
+        <h2>字体</h2>
+        <div class="row adv">
+          <label>预设</label>
+          <select id="fontPreset">
+            <option value="kai">楷体（本机 KaiTi / STKaiti）</option>
+            <option value="song">宋体 / 思源宋体</option>
+            <option value="hei">黑体 / 思源黑体</option>
+            <option value="serif">衬线 serif</option>
+            <option value="sans">无衬线 sans-serif</option>
+            <option value="custom">自定义…</option>
+          </select></div>
+        <div class="row adv">
+          <label>字体栈</label>
+          <input type="text" id="fontStack">
+        </div>
+        <div class="row">
+          <label>字体文件</label>
+          <span class="file"><button>选择 ttf / otf / woff2</button>
+            <input type="file" id="fontFile" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf"></span>
+          <span id="fontInfo">未加载</span>
+        </div>
+        <p class="hint">
+          不上传就用字体栈里的<b>本机字体</b>；上传的字体只内嵌进你导出的那个 HTML。
+          <b>请自行确认所用字体的授权允许嵌入与分发。</b>
+        </p>
+      </div>
+
+      <div class="grp">
+        <h2>排版</h2>
+        <div class="row"><label>字号</label>
+          <input type="range" id="fontPx" min="18" max="140" step="1">
+          <span class="val" id="fontPx_v"></span></div>
+        <div class="row adv"><label>画幅</label>
+          <select id="aspect">
+            <option value="1920x1080">16:9 · 1920×1080（横屏）</option>
+            <option value="1080x1920">9:16 · 1080×1920（竖屏）</option>
+            <option value="1080x1080">1:1 · 1080×1080</option>
+            <option value="1440x1080">4:3 · 1440×1080</option>
+          </select></div>
+        <div class="row adv"><label>行距</label>
+          <input type="range" id="line" min="50" max="240" step="1">
+          <span class="val" id="line_v"></span></div>
+        <div class="row adv"><label>块距</label>
+          <input type="range" id="blockGap" min="0" max="240" step="2">
+          <span class="val" id="blockGap_v"></span></div>
+        <div class="row adv"><label>标题额外距</label>
+          <input type="range" id="headerGap" min="0" max="140" step="2">
+          <span class="val" id="headerGap_v"></span></div>
+        <div class="row adv"><label>标题字距</label>
+          <input type="range" id="headerTrack" min="0" max="48" step="1">
+          <span class="val" id="headerTrack_v"></span></div>
+        <div class="row adv"><label>两栏中心</label>
+          <input type="range" id="gutterCenter" min="30" max="70" step="1">
+          <span class="val" id="gutterCenter_v"></span></div>
+        <div class="row adv"><label>两栏沟槽</label>
+          <input type="range" id="gutterWidth" min="0" max="320" step="2">
+          <span class="val" id="gutterWidth_v"></span></div>
+      </div>
+
+      <div class="grp">
+        <h2>滚动</h2>
+        <div class="row"><label>滚动时长</label>
+          <input type="range" id="duration" min="10" max="180" step="1">
+          <span class="val" id="duration_v"></span></div>
+        <div class="row"><label>循环播放</label>
+          <input type="checkbox" id="loop"></div>
+        <div class="row adv"><label>起点留白</label>
+          <input type="range" id="lead" min="0" max="420" step="10">
+          <span class="val" id="lead_v"></span></div>
+        <div class="row adv"><label>结尾黑场</label>
+          <input type="range" id="tailSec" min="0" max="8" step="0.5">
+          <span class="val" id="tailSec_v"></span></div>
+      </div>
+
+      <div class="grp">
+        <h2>颜色</h2>
+        <div class="row"><label>背景</label><input type="color" id="bg"></div>
+        <div class="row"><label>文字</label><input type="color" id="fg"></div>
+        <div class="row adv"><label>标题亮度</label>
+          <input type="range" id="headerAlpha" min="10" max="100" step="1">
+          <span class="val" id="headerAlpha_v"></span></div>
+        <div class="row adv"><label>渲染精度</label>
+          <select id="renderScale">
+            <option value="auto">高清（跟随屏幕）</option>
+            <option value="1">标准（1×，最快）</option>
+            <option value="2">超采样（2×，投影/录制）</option>
+          </select></div>
+      </div>
+
+      <div class="grp adv group">
+        <h2>视差背景层</h2>
+        <div class="row"><label>启用</label>
+          <input type="checkbox" id="paraOn"></div>
+        <div class="row"><label>背景文字</label>
+          <input type="text" id="paraText" placeholder="例如：谢 幕"></div>
+        <div class="row"><label>字号</label>
+          <input type="range" id="paraPx" min="40" max="600" step="10">
+          <span class="val" id="paraPx_v"></span></div>
+        <div class="row"><label>透明度</label>
+          <input type="range" id="paraAlpha" min="2" max="40" step="1">
+          <span class="val" id="paraAlpha_v"></span></div>
+        <div class="row"><label>滚动倍率</label>
+          <input type="range" id="paraMul" min="10" max="100" step="5">
+          <span class="val" id="paraMul_v"></span></div>
+        <div class="row"><label>纵向间距</label>
+          <input type="range" id="paraGap" min="200" max="2400" step="50">
+          <span class="val" id="paraGap_v"></span></div>
+        <div class="row"><label>颜色</label><input type="color" id="paraColor"></div>
+        <p class="hint">
+          背景大字以「滚动倍率 × 主速度」移动并纵向平铺，与前景名单形成前后两层速度差＝视差。
+          倍率 100% 表示与名单同速（无相对运动）。
+        </p>
+      </div>
+
+      <div class="grp">
+        <h2>导出</h2>
+        <div class="row adv"><label>页面标题</label>
+          <input type="text" id="title" placeholder="谢幕表"></div>
+        <div class="btns">
+          <button class="pri" id="btnExportHtml">导出成品 HTML</button>
+          <button id="btnExportJson" class="adv">导出配置</button>
+          <span class="file adv"><button>导入配置</button>
+            <input type="file" id="jsonFile" accept=".json,application/json"></span>
+        </div>
+        <p class="hint adv">
+          成品 HTML ＝ 单文件、打开即自动播放、字体与名单全部内嵌、零外部请求、可直接分享或挂到静态托管。
+          配置也可以存成 .json，方便下次导入或发给别人改。
+        </p>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════ 右：预览 ═══════════ -->
+  <div id="stage">
+    <canvas id="preview"></canvas>
+    <div id="bar">
+      <button id="btnPlay">⏸ 暂停</button>
+      <button id="btnReplay">↺ 从头</button>
+      <input type="range" id="seek" min="0" max="1000" value="0" style="flex:1">
+      <span class="t" id="time">0.0s</span>
+      <button id="btnFs" title="全屏">⛶</button>
+    </div>
+    <div id="toast"></div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     播放器源码（type=text/template：浏览器不执行）。
+     本页预览与「导出成品」共用这同一份代码 —— 只维护一份渲染逻辑。
+     占位符：__DATA__ ＝ 配置 JSON；__FONT_CSS__ ＝ @font-face（可为空）
+     ═══════════════════════════════════════════════════════════════════════ -->
+<script type="text/template" id="tpl-player">
+/* 滚幕 · 播放器（由生成器内嵌生成） */
+(function () {
+  "use strict";
+  var D = __DATA__;
+  var cv = document.querySelector(D.selector || "canvas");
+  var ctx = cv.getContext("2d");
+  var W = D.w, H = D.h, CX = W / 2;   /* 逻辑尺寸；物理尺寸 = 逻辑 × 渲染倍率 */
+  var cur = 0, last = null, playing = false;
+  var K = 1;
+
+  /* 渲染倍率：1 = 标准；2 = 2 倍超采样；"auto" = 跟随屏幕 DPR（高分屏文字不发虚） */
+  function resize() {
+    var r = D.renderScale;
+    K = (r === "auto") ? Math.min(2, window.devicePixelRatio || 1) : (+r || 1);
+    cv.width = Math.round(D.w * K);
+    cv.height = Math.round(D.h * K);
+  }
+  resize();
+
+  function setFont(px) { ctx.font = (px || D.fontPx) + "px " + D.fontStack; }
+
+  /* 栏目标题：居中 + 字距（逐字定位，保证跨浏览器一致） */
+  function drawHeader(s, y) {
+    setFont();
+    var w = 0, i, x;
+    for (i = 0; i < s.length; i++) w += ctx.measureText(s.charAt(i)).width + D.headerTrack;
+    w -= D.headerTrack;
+    x = CX - w / 2;
+    ctx.globalAlpha = D.alpha.header;
+    for (i = 0; i < s.length; i++) {
+      ctx.fillText(s.charAt(i), x, y);
+      x += ctx.measureText(s.charAt(i)).width + D.headerTrack;
+    }
+  }
+
+  /* 视差背景层：大字纵向平铺，按 主速度 × 倍率 移动，速度差形成前后景深 */
+  function drawParallax(t) {
+    var p = D.parallax;
+    if (!p || !p.on || !p.text) return;
+    var period = Math.max(D.h, p.gap);
+    var off = ((t * D.speed * p.mul) % period + period) % period;
+    setFont(p.px);
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.alpha;
+    ctx.textAlign = "center";
+    var y, k, n = Math.ceil((H + period) / period) + 1;
+    for (k = 0; k < n; k++) {
+      y = k * period - off + p.px * 0.35;
+      if (y > -p.px && y < H + p.px) ctx.fillText(p.text, CX, y);
+    }
+    ctx.textAlign = "left";
+  }
+
+  /* t 秒时的画面：同一 t 永远同一张图（纯函数） */
+  function render(t) {
+    ctx.setTransform(K, 0, 0, K, 0, 0);
+    ctx.globalAlpha = 1;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = D.palette.bg;
+    ctx.fillRect(0, 0, W, H);
+
+    drawParallax(t);
+
+    setFont();
+    ctx.fillStyle = D.palette.fg;
+    var sc = t * D.speed, pad = D.fontPx, items = D.items, i, it, y;
+
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();   /* 边缘硬切＝电影字幕的做法 */
+    for (i = 0; i < items.length; i++) {
+      it = items[i];
+      y = H + D.lead + it.v - sc;
+      if (y < 0 || y > H + pad) continue;
+      if (it.kind === "header") { drawHeader(it.text, y); }
+      else if (it.kind === "center") {
+        ctx.globalAlpha = D.alpha.row;
+        ctx.textAlign = "center";
+        ctx.fillText(it.text, CX, y);
+        ctx.textAlign = "left";
+      } else {
+        ctx.globalAlpha = D.alpha.row;
+        ctx.textAlign = "right";  ctx.fillText(it.l, D.colRoleR, y);
+        ctx.textAlign = "left";   ctx.fillText(it.r, D.colWhoL, y);
+      }
+    }
+    ctx.restore();
+    ctx.textAlign = "left";
+    ctx.globalAlpha = 1;
+  }
+
+  function totalSec() { return D.duration + D.tailSec; }
+
+  function loop(ts) {
+    if (playing) {
+      if (last !== null) cur += (ts - last) / 1000;
+      var T = totalSec();
+      if (cur >= T) {
+        if (D.loop) { cur -= T; } else { cur = T; playing = false; if (api.onend) api.onend(); }
+      }
+      render(Math.min(cur, T));
+      if (api.onframe) api.onframe(cur);
+    }
+    last = ts;
+    requestAnimationFrame(loop);
+  }
+
+  var api = {
+    data: D,
+    render: function (t) { cur = t; render(t); if (api.onframe) api.onframe(cur); },
+    time: function () { return cur; },
+    total: totalSec,
+    play: function () { playing = true; },
+    pause: function () { playing = false; },
+    isPlaying: function () { return playing; },
+    /* 更新配置：画幅变化时同步重设画布物理尺寸 */
+    setData: function (d) {
+      var k;
+      for (k in d) if (Object.prototype.hasOwnProperty.call(d, k)) D[k] = d[k];
+      if (cv.width !== Math.round(D.w * K) || cv.height !== Math.round(D.h * K) ||
+          D.renderScale !== resize._rs) {
+        resize._rs = D.renderScale;
+        W = D.w; H = D.h; CX = W / 2;
+        resize();
+      }
+      if (cur > totalSec()) cur = 0;
+    },
+    onframe: null,
+    onend: null
+  };
+  /* 成品页交互：双击＝全屏，空格＝暂停/继续（预览页里同样可用） */
+  function toggleFs() {
+    if (document.fullscreenElement) { document.exitFullscreen(); }
+    else if (cv.requestFullscreen) { cv.requestFullscreen(); }
+  }
+  cv.addEventListener("dblclick", toggleFs);
+  document.addEventListener("keydown", function (e) {
+    if (e.code === "Space" && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) {
+      e.preventDefault();
+      playing = !playing;
+    }
+  });
+
+  window.CreditsRoll = api;
+
+  if (D.autoplay !== false) playing = true;
+  requestAnimationFrame(loop);
+})();
+</script>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   编辑器：解析名单 → 组装配置 → 喂给播放器 → 导出
+   ═══════════════════════════════════════════════════════════════════════ */
+"use strict";
+function $(id) { return document.getElementById(id); }
+var LS_KEY = "credits-roll.cfg.v1";
+
+var DEMO = [
+  "# 出演",
+  "奥雷里亚诺·巴比伦 | 张 三",
+  "阿玛兰塔·布恩迪亚 | 李 四",
+  "乌尔苏拉·伊瓜兰 | 赵 六",
+  "皮埃特罗·克雷斯皮 | 孙 七",
+  "",
+  "# 群像",
+  "镇民甲 · 镇民乙 | 李 四",
+  "工人 · 医生 · 守夜人 | 郑 十",
+  "",
+  "# 配音",
+  "旁白 | 李 四",
+  "",
+  "# 特别感谢",
+  "加西亚·马尔克斯",
+  "",
+  "> 谢 幕"
+].join("\n");
+
+var DEFAULT_CFG = {
+  script: DEMO,
+  fontStack: "'KaiTi','STKaiti','楷体',serif",
+  aspect: "1920x1080",
+  fontPx: 46, line: 102, blockGap: 64, headerGap: 46, headerTrack: 14,
+  gutterCenter: 50, gutterWidth: 90,
+  duration: 38, lead: 90, tailSec: 1.5, loop: true,
+  bg: "#000000", fg: "#FFFFFF", headerAlpha: 55,
+  renderScale: "auto", fontPreset: "kai", title: "谢幕表",
+  para: { on: false, text: "谢 幕", px: 260, alpha: 0.06, mul: 0.4, gap: 900, color: "#FFFFFF" }
+};
+
+var FONT_PRESETS = {
+  kai:   "'KaiTi','STKaiti','楷体',serif",
+  song:  "'SimSun','Noto Serif SC','Source Han Serif SC',serif",
+  hei:   "'Microsoft YaHei','Noto Sans SC','Source Han Sans SC',sans-serif",
+  serif: "Georgia,'Songti SC',serif",
+  sans:  "system-ui,'PingFang SC','Microsoft YaHei',sans-serif"
+};
+
+var cfg = load() || JSON.parse(JSON.stringify(DEFAULT_CFG));
+var userFont = null;      /* {name, mime, b64}：上传的字体，导出时内嵌 */
+
+/* ── 名单解析 ─────────────────────────────────────────────
+   # 开头  → 栏目名（居中标题）
+   A | B   → 两栏行（左栏右对齐，右栏左对齐）
+   > 开头  → 整行居中（比两栏行更醒目地单独成行）
+   其它    → 整行居中
+----------------------------------------------------------- */
+function parseScript(text, L) {
+  var items = [], v = 0, lines = text.split("\n"), i, raw, line, p;
+  for (i = 0; i < lines.length; i++) {
+    line = lines[i].replace(/\s+$/, "").replace(/^\s+/, "");
+    if (!line) continue;
+    if (line.charAt(0) === "#") {
+      if (items.length) v += L.blockGap;
+      items.push({ kind: "header", text: line.slice(1).trim() || " ", v: r3(v) });
+      v += L.line + L.headerGap;
+      continue;
+    }
+    var centered = false;
+    if (line.charAt(0) === ">") { line = line.slice(1).trim(); centered = true; }
+    if (!line) continue;
+    p = line.indexOf("|");
+    if (p >= 0 && !centered) {
+      items.push({ kind: "row", l: line.slice(0, p).trim(), r: line.slice(p + 1).trim(), v: r3(v) });
+    } else {
+      items.push({ kind: "center", text: line, v: r3(v) });
+    }
+    v += L.line;
+  }
+  return items;
+}
+function r3(x) { return Math.round(x * 1000) / 1000; }
+
+/* ── 配置 → 播放器数据 ── */
+function buildData(selector) {
+  var wh = cfg.aspect.split("x"), w = +wh[0], h = +wh[1];
+  var items = parseScript(cfg.script, cfg);
+  var content = items.length ? items[items.length - 1].v : 0;
+  var speed = (h + cfg.lead + content) / Math.max(1, cfg.duration);
+  var gc = w * cfg.gutterCenter / 100, gw = cfg.gutterWidth / 2;
+  var para = {};
+  for (var k in cfg.para) if (Object.prototype.hasOwnProperty.call(cfg.para, k)) para[k] = cfg.para[k];
+  return {
+    selector: selector,
+    w: w, h: h, items: items,
+    fontPx: cfg.fontPx, fontStack: cfg.fontStack, headerTrack: cfg.headerTrack,
+    colRoleR: r3(gc - gw), colWhoL: r3(gc + gw),
+    speed: r3(speed), lead: cfg.lead, renderScale: cfg.renderScale,
+    duration: cfg.duration, tailSec: cfg.tailSec, loop: !!cfg.loop,
+    palette: { bg: cfg.bg, fg: cfg.fg },
+    alpha: { header: cfg.headerAlpha / 100, row: 1 },
+    parallax: para, autoplay: true
+  };
+}
+
+/* ── 状态读数 + 越界预警（离屏画布量宽）── */
+var mctx = document.createElement("canvas").getContext("2d");
+function textW(t, px, stack) { mctx.font = px + "px " + stack; return mctx.measureText(t).width; }
+
+function statLine(d, lineH) {
+  var rows = 0, i, maxL = 0, maxR = 0, maxC = 0, it, w;
+  for (i = 0; i < d.items.length; i++) {
+    it = d.items[i];
+    if (it.kind === "header") continue;
+    rows++;
+    if (it.kind === "row") {
+      w = textW(it.l, d.fontPx, d.fontStack); if (w > maxL) maxL = w;
+      w = textW(it.r, d.fontPx, d.fontStack); if (w > maxR) maxR = w;
+    } else {
+      w = textW(it.text, d.fontPx, d.fontStack); if (w > maxC) maxC = w;
+    }
+  }
+  var sec = d.speed > 0 ? lineH / d.speed : 0;   /* 每行在画面里停留多久 */
+  var warn = [];
+  if (maxL > d.colRoleR) warn.push("左栏最长 " + Math.round(maxL) + "px 超出画框（加大「两栏中心」或缩小字号）");
+  if (d.colWhoL + maxR > d.w) warn.push("右栏最长 " + Math.round(maxR) + "px 超出画框（加大「两栏中心」或缩小字号）");
+  if (maxC > d.w * 0.94) warn.push("居中行最长 " + Math.round(maxC) + "px 接近满幅");
+  return rows + " 行 · 内容高 " + Math.round(d.items.length ? d.items[d.items.length - 1].v : 0) +
+         "px · 速度 " + d.speed.toFixed(1) + "px/s · 每行 ≈" + sec.toFixed(2) + "s" +
+         (warn.length ? "　⚠ " + warn.join("；") : "");
+}
+
+/* ── 控件清单：id → {min,max,step,suffix} ── */
+var SLIDERS = {
+  fontPx:        { min: 18,  max: 140, step: 1,   suf: "px" },
+  line:          { min: 50,  max: 240, step: 1,   suf: "px" },
+  blockGap:      { min: 0,   max: 240, step: 2,   suf: "px" },
+  headerGap:     { min: 0,   max: 140, step: 2,   suf: "px" },
+  headerTrack:   { min: 0,   max: 48,  step: 1,   suf: "px" },
+  gutterCenter:  { min: 30,  max: 70,  step: 1,   suf: "%"  },
+  gutterWidth:   { min: 0,   max: 320, step: 2,   suf: "px" },
+  duration:      { min: 10,  max: 180, step: 1,   suf: "s"  },
+  lead:          { min: 0,   max: 420, step: 10,  suf: "px" },
+  tailSec:       { min: 0,   max: 8,   step: 0.5, suf: "s"  },
+  headerAlpha:   { min: 10,  max: 100, step: 1,   suf: "%"  },
+  paraPx:        { min: 40,  max: 600, step: 10,  suf: "px" },
+  paraAlpha:     { min: 2,   max: 40,  step: 1,   suf: "%"  },
+  paraMul:       { min: 10,  max: 100, step: 5,   suf: "%"  },
+  paraGap:       { min: 200, max: 2400,step: 50,  suf: "px" }
+};
+
+function fmtVal(k, v) { return v + (SLIDERS[k] ? SLIDERS[k].suf : ""); }
+
+function bindControls() {
+  $("script").value = cfg.script;
+  $("fontStack").value = cfg.fontStack;
+  $("fontPreset").value = cfg.fontPreset;
+  $("aspect").value = cfg.aspect;
+  $("renderScale").value = cfg.renderScale;
+  $("title").value = cfg.title;
+  $("bg").value = cfg.bg;
+  $("fg").value = cfg.fg;
+  $("loop").checked = !!cfg.loop;
+  $("paraOn").checked = !!cfg.para.on;
+  $("paraText").value = cfg.para.text;
+  $("paraColor").value = cfg.para.color;
+
+  $("fontPreset").addEventListener("change", function () {
+    cfg.fontPreset = $("fontPreset").value;
+    if (FONT_PRESETS[cfg.fontPreset]) {
+      cfg.fontStack = FONT_PRESETS[cfg.fontPreset];
+      $("fontStack").value = cfg.fontStack;
+    }
+    refresh(); save();
+  });
+  $("renderScale").addEventListener("change", function () { cfg.renderScale = $("renderScale").value; refresh(); save(); });
+  $("title").addEventListener("input", function () { cfg.title = $("title").value; save(); });
+
+  Object.keys(SLIDERS).forEach(function (k) {
+    var el = $(k);
+    el.min = SLIDERS[k].min; el.max = SLIDERS[k].max; el.step = SLIDERS[k].step;
+    el.value = cfg[k];
+    $(k + "_v").textContent = fmtVal(k, cfg[k]);
+    el.addEventListener("input", function () {
+      cfg[k] = +el.value;
+      $(k + "_v").textContent = fmtVal(k, cfg[k]);
+      refresh(); save();
+    });
+  });
+
+  $("script").addEventListener("input", function () { cfg.script = $("script").value; refresh(); save(); });
+  $("fontStack").addEventListener("input", function () {
+    cfg.fontStack = $("fontStack").value;
+    var hit = null, k;
+    for (k in FONT_PRESETS) if (FONT_PRESETS[k] === cfg.fontStack) hit = k;
+    cfg.fontPreset = hit || "custom";
+    $("fontPreset").value = cfg.fontPreset;
+    refresh(); save();
+  });
+  $("aspect").addEventListener("change", function () { cfg.aspect = $("aspect").value; refresh(); save(); });
+  $("bg").addEventListener("input", function () { cfg.bg = $("bg").value; refresh(); save(); });
+  $("fg").addEventListener("input", function () { cfg.fg = $("fg").value; refresh(); save(); });
+  $("loop").addEventListener("change", function () { cfg.loop = $("loop").checked; refresh(); save(); });
+
+  $("paraOn").addEventListener("change", function () { cfg.para.on = $("paraOn").checked; refresh(); save(); });
+  $("paraText").addEventListener("input", function () { cfg.para.text = $("paraText").value; refresh(); save(); });
+  $("paraColor").addEventListener("input", function () { cfg.para.color = $("paraColor").value; refresh(); save(); });
+
+  $("btnDemo").addEventListener("click", function () { cfg.script = DEMO; $("script").value = DEMO; refresh(); save(); });
+  $("btnClear").addEventListener("click", function () { cfg.script = ""; $("script").value = ""; refresh(); save(); });
+
+  $("fontFile").addEventListener("change", onFontFile);
+  $("jsonFile").addEventListener("change", onJsonFile);
+
+  $("btnExportHtml").addEventListener("click", exportHtml);
+  $("btnExportJson").addEventListener("click", exportJson);
+
+  $("btnPlay").addEventListener("click", togglePlay);
+  $("btnReplay").addEventListener("click", function () { CreditsRoll.render(0); CreditsRoll.play(); setPlayBtn(); });
+
+  $("mSimple").addEventListener("click", function () { setMode("simple"); });
+  $("mAdv").addEventListener("click", function () { setMode("adv"); });
+}
+
+function setMode(m) {
+  document.body.className = (m === "adv") ? "mode-adv" : "mode-simple";
+  $("mSimple").className = (m === "adv") ? "" : "on";
+  $("mAdv").className = (m === "adv") ? "on" : "";
+  localStorage.setItem(LS_KEY + ".mode", m);
+  toast(m === "adv" ? "高级模式：全部参数可调" : "简单模式：只留常用参数");
+}
+
+/* ── 字体文件：加载进页面 + 留底用于导出内嵌 ── */
+function onFontFile(e) {
+  var f = e.target.files && e.target.files[0];
+  if (!f) return;
+  var fr = new FileReader();
+  fr.onload = function () {
+    var buf = fr.result;
+    var name = "UserFont";
+    var ff = new FontFace(name, buf);
+    ff.load().then(function (loaded) {
+      document.fonts.add(loaded);
+      userFont = { name: name, mime: f.type || "font/ttf", b64: ab2b64(buf) };
+      cfg.fontStack = "'" + name + "'";
+      $("fontStack").value = cfg.fontStack;
+      $("fontInfo").textContent = f.name + "（" + Math.round(f.size / 1024) + " KB）";
+      refresh(); save();
+      toast("字体已加载：" + f.name);
+    }).catch(function (err) {
+      toast("字体加载失败：" + err);
+    });
+  };
+  fr.readAsArrayBuffer(f);
+}
+function ab2b64(buf) {
+  var u8 = new Uint8Array(buf), CH = 0x8000, s = "", i;
+  for (i = 0; i < u8.length; i += CH) s += String.fromCharCode.apply(null, u8.subarray(i, i + CH));
+  return btoa(s);
+}
+
+/* ── 配置 JSON 导入导出（字体太大，不进 JSON；进 localStorage 与成品）── */
+function exportJson() {
+  download(JSON.stringify(cfg, null, 2), "credits-roll-config.json", "application/json");
+}
+function onJsonFile(e) {
+  var f = e.target.files && e.target.files[0];
+  if (!f) return;
+  var fr = new FileReader();
+  fr.onload = function () {
+    try {
+      var d = JSON.parse(fr.result);
+      if (typeof d.script !== "string") throw new Error("缺少 script 字段");
+      cfg = mergeCfg(d);
+      $("fontFile").value = ""; userFont = null; $("fontInfo").textContent = "未加载";
+      bindValues(); refresh(); save();
+      toast("配置已导入");
+    } catch (err) { toast("导入失败：" + err.message); }
+  };
+  fr.readAsText(f);
+}
+function mergeCfg(d) {
+  var out = JSON.parse(JSON.stringify(DEFAULT_CFG)), k;
+  for (k in out) if (Object.prototype.hasOwnProperty.call(d, k)) out[k] = d[k];
+  if (d.para) for (k in out.para) if (Object.prototype.hasOwnProperty.call(d.para, k)) out.para[k] = d.para[k];
+  return out;
+}
+function bindValues() {
+  $("script").value = cfg.script;
+  $("fontStack").value = cfg.fontStack;
+  $("aspect").value = cfg.aspect;
+  $("bg").value = cfg.bg; $("fg").value = cfg.fg;
+  $("loop").checked = !!cfg.loop;
+  $("paraOn").checked = !!cfg.para.on;
+  $("paraText").value = cfg.para.text;
+  $("paraColor").value = cfg.para.color;
+  Object.keys(SLIDERS).forEach(function (k) {
+    $(k).value = cfg[k];
+    $(k + "_v").textContent = fmtVal(k, cfg[k]);
+  });
+}
+
+/* ── 导出成品：单文件 HTML（字体 + 配置 + 播放器，全部内嵌）── */
+function fontCss() {
+  if (!userFont) return "";
+  return "@font-face{font-family:'" + userFont.name + "';font-display:block;src:url(data:" +
+         userFont.mime + ";base64," + userFont.b64 + ") format('truetype');}\n";
+}
+function exportHtml() {
+  var tpl = $("tpl-player").textContent;
+  var player = tpl.replace(/__FONT_CSS__/g, "").replace(/__DATA__/g, JSON.stringify(buildData("#stage")));
+  var title = (cfg.title || "谢幕表").trim() || "谢幕表";
+  var fname = title.replace(/[\\/:*?\"<>|]/g, "_") + ".html";
+  var html = "<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n<meta charset=\"utf-8\">\n" +
+    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n" +
+    "<title>" + title + "</title>\n<style>\n" + fontCss() +
+    "html,body{margin:0;height:100%;background:" + cfg.bg + ";overflow:hidden}\n" +
+    "body{display:flex;align-items:center;justify-content:center}\n" +
+    "canvas{display:block;max-width:100vw;max-height:100vh}\n" +
+    "@media (max-aspect-ratio:" + aspectRatio() + "){canvas{width:100vw;height:auto}}\n" +
+    "</style>\n</head>\n<body>\n<canvas id=\"stage\"></canvas>\n<script>\n" +
+    player + "\n<\/script>\n</body>\n</html>\n";
+  download(html, fname, "text/html;charset=utf-8");
+  toast("已导出：" + fname + "（" + Math.round(html.length / 1024) + " KB）");
+}
+function aspectRatio() {
+  var wh = cfg.aspect.split("x"), a = +wh[0], b = +wh[1], t;
+  var x = a, y = b;                       /* 辗转相除求最大公约数（原来的对半约分是错的） */
+  while (y) { t = y; y = x % y; x = t; }
+  return (a / x) + "/" + (b / x);
+}
+
+/* ── 杂项 ── */
+function download(text, name, mime) {
+  var blob = new Blob([text], { type: mime });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 800);
+}
+function toast(msg) {
+  var t = $("toast");
+  t.textContent = msg;
+  t.className = "on";
+  clearTimeout(t._h);
+  t._h = setTimeout(function () { t.className = ""; }, 2200);
+}
+function save() { try { localStorage.setItem(LS_KEY, JSON.stringify(cfg)); } catch (e) {} }
+function load() {
+  try {
+    var s = localStorage.getItem(LS_KEY);
+    return s ? mergeCfg(JSON.parse(s)) : null;
+  } catch (e) { return null; }
+}
+function togglePlay() {
+  if (CreditsRoll.isPlaying()) { CreditsRoll.pause(); $("btnPlay").textContent = "▶ 播放"; }
+  else { CreditsRoll.play(); $("btnPlay").textContent = "⏸ 暂停"; }
+}
+function setPlayBtn() { $("btnPlay").textContent = CreditsRoll.isPlaying() ? "⏸ 暂停" : "▶ 播放"; }
+
+/* ── 启动 ── */
+bindControls();
+
+/* 把播放器源码替换占位符后在全局执行一次（预览画布用） */
+(function () {
+  var src = $("tpl-player").textContent
+    .replace(/__FONT_CSS__/g, "")
+    .replace(/__DATA__/g, JSON.stringify(buildData("#preview")));
+  var s = document.createElement("script");
+  s.textContent = src;
+  document.body.appendChild(s);
+})();
+
+refresh();          /* 启动即出状态读数（行数 / 速度 / 溢出预警） */
+
+CreditsRoll.onframe = function (t) {
+  var T = CreditsRoll.total();
+  $("time").textContent = t.toFixed(1) + "s / " + T.toFixed(1) + "s";
+  $("seek").value = Math.round(t / T * 1000);
+  if (!CreditsRoll.isPlaying()) setPlayBtn();
+};
+
+$("seek").addEventListener("input", function () {
+  var t = (+$("seek").value / 1000) * CreditsRoll.total();
+  CreditsRoll.pause();
+  CreditsRoll.render(t);                 /* render 会回调 onframe，时间与进度条同步 */
+  setPlayBtn();
+});
+$("btnFs").addEventListener("click", function () {
+  var el = $("stage");
+  if (document.fullscreenElement) document.exitFullscreen();
+  else if (el.requestFullscreen) el.requestFullscreen();
+});
+
+function refresh() {
+  var d = buildData("#preview");
+  CreditsRoll.setData(d);
+  $("stat").textContent = statLine(d, cfg.line);
+  var T = CreditsRoll.total();
+  $("seek").max = Math.round(T * 1000);
+}
+
+/* 恢复上次的模式 */
+setMode(localStorage.getItem(LS_KEY + ".mode") === "adv" ? "adv" : "simple");
+toast("就绪：左侧改参数，右侧实时预览");
+</script>
+</body>
+</html>
